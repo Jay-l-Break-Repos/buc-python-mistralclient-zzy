@@ -1,30 +1,15 @@
 version: '3.8'
 
 services:
-  devstack:
+  api:
     build: .
-    container_name: openstack-devstack
+    container_name: workflow-api
     ports:
-      - "80:80"
-      - "443:443"
-      - "5000:5000"   # Keystone
-      - "8774:8774"   # Nova
-      - "8989:8989"   # Mistral
+      - "9090:9090"
     environment:
-      - STACK_PASSWORD=password
-      - DATABASE_PASSWORD=password
-      - RABBIT_PASSWORD=password
-      - SERVICE_PASSWORD=password
-      - ADMIN_PASSWORD=password
+      - WORKFLOW_STORAGE_DIR=/app/workflow_storage
     volumes:
-      - devstack_data:/opt/stack
-    networks:
-      - openstack
-    privileged: true
-
-networks:
-  openstack:
-    driver: bridge
+      - workflow_data:/app/workflow_storage
 
 volumes:
-  devstack_data:
+  workflow_data:
