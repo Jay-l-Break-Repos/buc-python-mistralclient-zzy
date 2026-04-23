@@ -1,28 +1,28 @@
 """
-Tests for POST /api/workflows/upload
+Tests for the Workflow API
 
-Covers:
-- Successful YAML upload (.yaml and .yml)
-- Successful JSON upload (.json)
-- Missing file field → 400
-- Empty filename → 400
-- Unsupported extension → 400
-- Malformed YAML content → 400
-- Malformed JSON content → 400
+Endpoints covered
+-----------------
+POST   /api/workflows/upload   – upload a YAML or JSON workflow file
+GET    /api/workflows           – list all uploaded workflows
+GET    /api/workflows/<id>      – retrieve a specific workflow's raw content
+DELETE /api/workflows/<id>      – delete a workflow
 """
 
 import io
 import json
-import os
-import tempfile
 
 import pytest
 
-# Point storage at a temp directory so tests don't pollute the repo.
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
 @pytest.fixture(autouse=True)
 def isolated_storage(tmp_path, monkeypatch):
+    """Point the storage layer at a fresh temp directory for every test."""
     monkeypatch.setenv("WORKFLOW_STORAGE_DIR", str(tmp_path / "workflow_storage"))
-    # Re-import storage module so it picks up the new env var.
     import importlib
     import app.storage.workflow_store as ws
     importlib.reload(ws)
@@ -38,11 +38,19 @@ def client(isolated_storage):
 
 
 # ---------------------------------------------------------------------------
+# Shared test data
+# ---------------------------------------------------------------------------
+
+VALID_YAML = b"version: '2.0'\nname: my_workflow\ntasks:\n  task1:\n    action: std.noop\n"
+VALID_JSON = b'{"version": "2.0", "name": "my_workflow"}'
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def _upload(client, filename: str, content: bytes, field: str = "file"):
-    """Send a multipart upload request."""
+    """Send a multipart upload request and return the response."""
     data = {field: (io.BytesIO(content), filename)}
     return client.post(
         "/api/workflows/upload",
@@ -51,78 +59,82 @@ def _upload(client, filename: str, content: bytes, field: str = "file"):
     )
 
 
-VALID_YAML = b"version: '2.0'\nname: my_workflow\ntasks:\n  task1:\n    action: std.noop\n"
-VALID_JSON = b'{"version": "2.0", "name": "my_workflow"}'
+def _upload_ok(client, filename: str = "wf.yaml", content: bytes = VALID_YAML) -> dict:
+    """Upload a valid file and return the parsed JSON body (asserts 201)."""
+    resp = _upload(client, filename, content)
+    assert resp.status_code == 201, resp.get_data(as_text=True)
+    return resp.get_json()
 
 
-# ---------------------------------------------------------------------------
-# Happy-path tests
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# POST /api/workflows/upload
+# ===========================================================================
 
-class TestSuccessfulUploads:
-    def test_upload_yaml_extension(self, client):
+class TestUploadHappyPath:
+    def test_returns_201(self, client):
         resp = _upload(client, "workflow.yaml", VALID_YAML)
         assert resp.status_code == 201
-        body = resp.get_json()
-        assert body["message"] == "Workflow uploaded successfully."
-        wf = body["workflow"]
-        assert wf["filename"] == "workflow.yaml"
-        assert "id" in wf
-        assert wf["size"] == len(VALID_YAML)
-        assert "uploaded_at" in wf
 
-    def test_upload_yml_extension(self, client):
-        resp = _upload(client, "workflow.yml", VALID_YAML)
-        assert resp.status_code == 201
-        body = resp.get_json()
-        assert body["workflow"]["filename"] == "workflow.yml"
+    def test_response_has_id(self, client):
+        body = _upload_ok(client)
+        assert "id" in body
 
-    def test_upload_json_extension(self, client):
-        resp = _upload(client, "workflow.json", VALID_JSON)
-        assert resp.status_code == 201
-        body = resp.get_json()
-        assert body["workflow"]["filename"] == "workflow.json"
+    def test_response_has_name(self, client):
+        body = _upload_ok(client, "workflow.yaml")
+        assert body["name"] == "workflow.yaml"
+
+    def test_response_has_size(self, client):
+        body = _upload_ok(client, "wf.yaml", VALID_YAML)
+        assert body["size"] == len(VALID_YAML)
+
+    def test_response_has_uploaded_at(self, client):
+        body = _upload_ok(client)
+        assert "uploaded_at" in body
+
+    def test_yaml_extension_accepted(self, client):
+        assert _upload(client, "wf.yaml", VALID_YAML).status_code == 201
+
+    def test_yml_extension_accepted(self, client):
+        assert _upload(client, "wf.yml", VALID_YAML).status_code == 201
+
+    def test_json_extension_accepted(self, client):
+        assert _upload(client, "wf.json", VALID_JSON).status_code == 201
 
     def test_each_upload_gets_unique_id(self, client):
-        r1 = _upload(client, "wf.yaml", VALID_YAML)
-        r2 = _upload(client, "wf.yaml", VALID_YAML)
-        id1 = r1.get_json()["workflow"]["id"]
-        id2 = r2.get_json()["workflow"]["id"]
+        id1 = _upload_ok(client)["id"]
+        id2 = _upload_ok(client)["id"]
         assert id1 != id2
 
-    def test_response_contains_size(self, client):
-        resp = _upload(client, "wf.json", VALID_JSON)
-        assert resp.get_json()["workflow"]["size"] == len(VALID_JSON)
+    def test_response_is_flat_not_nested(self, client):
+        """id and name must be top-level keys, not nested under 'workflow'."""
+        body = _upload_ok(client)
+        assert "workflow" not in body
+        assert "id" in body
+        assert "name" in body
 
 
-# ---------------------------------------------------------------------------
-# Validation error tests
-# ---------------------------------------------------------------------------
-
-class TestValidationErrors:
+class TestUploadValidationErrors:
     def test_missing_file_field_returns_400(self, client):
-        resp = client.post("/api/workflows/upload", data={}, content_type="multipart/form-data")
+        resp = client.post("/api/workflows/upload", data={},
+                           content_type="multipart/form-data")
         assert resp.status_code == 400
         assert "error" in resp.get_json()
 
     def test_empty_filename_returns_400(self, client):
         data = {"file": (io.BytesIO(VALID_YAML), "")}
-        resp = client.post(
-            "/api/workflows/upload",
-            data=data,
-            content_type="multipart/form-data",
-        )
+        resp = client.post("/api/workflows/upload", data=data,
+                           content_type="multipart/form-data")
         assert resp.status_code == 400
         assert "error" in resp.get_json()
 
-    def test_unsupported_extension_txt_returns_400(self, client):
+    def test_txt_extension_returns_400(self, client):
         resp = _upload(client, "workflow.txt", VALID_YAML)
         assert resp.status_code == 400
         body = resp.get_json()
         assert "error" in body
         assert ".txt" in body["error"]
 
-    def test_unsupported_extension_xml_returns_400(self, client):
+    def test_xml_extension_returns_400(self, client):
         resp = _upload(client, "workflow.xml", b"<root/>")
         assert resp.status_code == 400
         assert "error" in resp.get_json()
@@ -130,72 +142,191 @@ class TestValidationErrors:
     def test_no_extension_returns_400(self, client):
         resp = _upload(client, "workflow", VALID_YAML)
         assert resp.status_code == 400
-        body = resp.get_json()
-        assert "error" in body
+        assert "error" in resp.get_json()
+
+    def test_error_mentions_allowed_types(self, client):
+        body = _upload(client, "workflow.csv", b"a,b,c").get_json()
+        msg = body["error"].lower()
+        assert "yaml" in msg or "yml" in msg or "json" in msg
 
     def test_malformed_yaml_returns_400(self, client):
-        bad_yaml = b"key: [unclosed bracket\n  - item\n"
-        resp = _upload(client, "bad.yaml", bad_yaml)
+        resp = _upload(client, "bad.yaml", b"key: [unclosed bracket\n  - item\n")
         assert resp.status_code == 400
         body = resp.get_json()
         assert "error" in body
         assert "yaml" in body["error"].lower()
 
     def test_malformed_json_returns_400(self, client):
-        bad_json = b'{"key": "value", "broken":'
-        resp = _upload(client, "bad.json", bad_json)
+        resp = _upload(client, "bad.json", b'{"key": "value", "broken":')
         assert resp.status_code == 400
         body = resp.get_json()
         assert "error" in body
         assert "json" in body["error"].lower()
 
-    def test_error_message_mentions_allowed_types(self, client):
-        resp = _upload(client, "workflow.csv", b"a,b,c")
+
+# ===========================================================================
+# GET /api/workflows
+# ===========================================================================
+
+class TestListWorkflows:
+    def test_empty_list_on_fresh_storage(self, client):
+        resp = client.get("/api/workflows")
+        assert resp.status_code == 200
         body = resp.get_json()
-        error_msg = body["error"].lower()
-        assert "yaml" in error_msg or "yml" in error_msg or "json" in error_msg
+        assert body["workflows"] == []
+
+    def test_returns_uploaded_workflow(self, client):
+        _upload_ok(client, "wf.yaml")
+        resp = client.get("/api/workflows")
+        assert resp.status_code == 200
+        workflows = resp.get_json()["workflows"]
+        assert len(workflows) == 1
+
+    def test_list_entry_has_id_and_name(self, client):
+        _upload_ok(client, "my.yaml")
+        entry = client.get("/api/workflows").get_json()["workflows"][0]
+        assert "id" in entry
+        assert entry["name"] == "my.yaml"
+
+    def test_list_entry_has_size_and_uploaded_at(self, client):
+        _upload_ok(client, "wf.yaml", VALID_YAML)
+        entry = client.get("/api/workflows").get_json()["workflows"][0]
+        assert entry["size"] == len(VALID_YAML)
+        assert "uploaded_at" in entry
+
+    def test_multiple_uploads_all_listed(self, client):
+        _upload_ok(client, "a.yaml")
+        _upload_ok(client, "b.json", VALID_JSON)
+        _upload_ok(client, "c.yml")
+        workflows = client.get("/api/workflows").get_json()["workflows"]
+        assert len(workflows) == 3
+
+    def test_list_ids_match_upload_ids(self, client):
+        id1 = _upload_ok(client, "a.yaml")["id"]
+        id2 = _upload_ok(client, "b.yaml")["id"]
+        listed_ids = {w["id"] for w in client.get("/api/workflows").get_json()["workflows"]}
+        assert {id1, id2} == listed_ids
 
 
-# ---------------------------------------------------------------------------
-# Storage integration tests
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# GET /api/workflows/<id>
+# ===========================================================================
+
+class TestRetrieveWorkflow:
+    def test_returns_200_for_existing_workflow(self, client):
+        wf_id = _upload_ok(client, "wf.yaml")["id"]
+        resp = client.get(f"/api/workflows/{wf_id}")
+        assert resp.status_code == 200
+
+    def test_returns_yaml_content(self, client):
+        wf_id = _upload_ok(client, "wf.yaml", VALID_YAML)["id"]
+        resp = client.get(f"/api/workflows/{wf_id}")
+        assert resp.data == VALID_YAML
+
+    def test_returns_json_content(self, client):
+        wf_id = _upload_ok(client, "wf.json", VALID_JSON)["id"]
+        resp = client.get(f"/api/workflows/{wf_id}")
+        assert resp.data == VALID_JSON
+
+    def test_yaml_content_type_header(self, client):
+        wf_id = _upload_ok(client, "wf.yaml", VALID_YAML)["id"]
+        resp = client.get(f"/api/workflows/{wf_id}")
+        assert "yaml" in resp.content_type.lower()
+
+    def test_json_content_type_header(self, client):
+        wf_id = _upload_ok(client, "wf.json", VALID_JSON)["id"]
+        resp = client.get(f"/api/workflows/{wf_id}")
+        assert "json" in resp.content_type.lower()
+
+    def test_returns_404_for_unknown_id(self, client):
+        resp = client.get("/api/workflows/nonexistent-id")
+        assert resp.status_code == 404
+        assert "error" in resp.get_json()
+
+    def test_404_error_mentions_id(self, client):
+        resp = client.get("/api/workflows/no-such-id")
+        assert "no-such-id" in resp.get_json()["error"]
+
+
+# ===========================================================================
+# DELETE /api/workflows/<id>
+# ===========================================================================
+
+class TestDeleteWorkflow:
+    def test_returns_200_on_successful_delete(self, client):
+        wf_id = _upload_ok(client)["id"]
+        resp = client.delete(f"/api/workflows/{wf_id}")
+        assert resp.status_code == 200
+
+    def test_delete_response_has_message(self, client):
+        wf_id = _upload_ok(client)["id"]
+        body = client.delete(f"/api/workflows/{wf_id}").get_json()
+        assert "message" in body
+
+    def test_deleted_workflow_no_longer_in_list(self, client):
+        wf_id = _upload_ok(client)["id"]
+        client.delete(f"/api/workflows/{wf_id}")
+        workflows = client.get("/api/workflows").get_json()["workflows"]
+        assert all(w["id"] != wf_id for w in workflows)
+
+    def test_deleted_workflow_returns_404_on_retrieve(self, client):
+        wf_id = _upload_ok(client)["id"]
+        client.delete(f"/api/workflows/{wf_id}")
+        resp = client.get(f"/api/workflows/{wf_id}")
+        assert resp.status_code == 404
+
+    def test_delete_nonexistent_returns_404(self, client):
+        resp = client.delete("/api/workflows/nonexistent-id")
+        assert resp.status_code == 404
+        assert "error" in resp.get_json()
+
+    def test_delete_only_removes_target(self, client):
+        id1 = _upload_ok(client, "a.yaml")["id"]
+        id2 = _upload_ok(client, "b.yaml")["id"]
+        client.delete(f"/api/workflows/{id1}")
+        workflows = client.get("/api/workflows").get_json()["workflows"]
+        ids = [w["id"] for w in workflows]
+        assert id1 not in ids
+        assert id2 in ids
+
+
+# ===========================================================================
+# Storage integration
+# ===========================================================================
 
 class TestStorageIntegration:
-    def test_file_is_written_to_disk(self, client, tmp_path, monkeypatch):
-        storage_dir = tmp_path / "workflow_storage"
+    def test_file_written_to_disk(self, client, tmp_path, monkeypatch):
+        storage_dir = tmp_path / "wf_store"
         monkeypatch.setenv("WORKFLOW_STORAGE_DIR", str(storage_dir))
-
-        import importlib
-        import app.storage.workflow_store as ws
+        import importlib, app.storage.workflow_store as ws
         importlib.reload(ws)
-
-        # Re-create client with fresh storage
         from app.factory import create_app
-        app = create_app({"TESTING": True})
-        with app.test_client() as c:
-            resp = _upload(c, "wf.yaml", VALID_YAML)
-            assert resp.status_code == 201
-            wf_id = resp.get_json()["workflow"]["id"]
+        with create_app({"TESTING": True}).test_client() as c:
+            body = _upload_ok(c, "wf.yaml")
+            wf_id = body["id"]
+        stored = list((storage_dir / "files").iterdir())
+        assert len(stored) == 1
+        assert wf_id in stored[0].name
 
-        files_dir = storage_dir / "files"
-        stored_files = list(files_dir.iterdir())
-        assert len(stored_files) == 1
-        assert wf_id in stored_files[0].name
-
-    def test_index_json_is_created(self, client, tmp_path, monkeypatch):
-        storage_dir = tmp_path / "workflow_storage"
+    def test_index_json_created(self, client, tmp_path, monkeypatch):
+        storage_dir = tmp_path / "wf_store"
         monkeypatch.setenv("WORKFLOW_STORAGE_DIR", str(storage_dir))
-
-        import importlib
-        import app.storage.workflow_store as ws
+        import importlib, app.storage.workflow_store as ws
         importlib.reload(ws)
-
         from app.factory import create_app
-        app = create_app({"TESTING": True})
-        with app.test_client() as c:
-            _upload(c, "wf.json", VALID_JSON)
-
-        index_file = storage_dir / "index.json"
-        assert index_file.exists()
-        index = json.loads(index_file.read_text())
+        with create_app({"TESTING": True}).test_client() as c:
+            _upload_ok(c, "wf.json", VALID_JSON)
+        index = json.loads((storage_dir / "index.json").read_text())
         assert len(index) == 1
+
+    def test_file_removed_from_disk_on_delete(self, client, tmp_path, monkeypatch):
+        storage_dir = tmp_path / "wf_store"
+        monkeypatch.setenv("WORKFLOW_STORAGE_DIR", str(storage_dir))
+        import importlib, app.storage.workflow_store as ws
+        importlib.reload(ws)
+        from app.factory import create_app
+        with create_app({"TESTING": True}).test_client() as c:
+            wf_id = _upload_ok(c, "wf.yaml")["id"]
+            c.delete(f"/api/workflows/{wf_id}")
+        stored = list((storage_dir / "files").iterdir())
+        assert stored == []
