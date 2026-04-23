@@ -148,22 +148,20 @@ def list_all_workflows():
 
     Response 200
     ------------
-    ::
+    A JSON array of workflow metadata objects::
 
-        {
-            "workflows": [
-                {
-                    "id":          "<uuid4>",
-                    "name":        "<filename>",
-                    "size":        <bytes>,
-                    "uploaded_at": "<ISO-8601 UTC timestamp>"
-                },
-                ...
-            ]
-        }
+        [
+            {
+                "id":          "<uuid4>",
+                "name":        "<filename>",
+                "size":        <bytes>,
+                "uploaded_at": "<ISO-8601 UTC timestamp>"
+            },
+            ...
+        ]
     """
     workflows = list_workflows()
-    return jsonify({"workflows": workflows}), 200
+    return jsonify(workflows), 200
 
 
 # ---------------------------------------------------------------------------

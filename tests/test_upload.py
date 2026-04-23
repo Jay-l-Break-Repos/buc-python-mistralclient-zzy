@@ -173,24 +173,24 @@ class TestListWorkflows:
         resp = client.get("/api/workflows")
         assert resp.status_code == 200
         body = resp.get_json()
-        assert body["workflows"] == []
+        assert body == []
 
     def test_returns_uploaded_workflow(self, client):
         _upload_ok(client, "wf.yaml")
         resp = client.get("/api/workflows")
         assert resp.status_code == 200
-        workflows = resp.get_json()["workflows"]
+        workflows = resp.get_json()
         assert len(workflows) == 1
 
     def test_list_entry_has_id_and_name(self, client):
         _upload_ok(client, "my.yaml")
-        entry = client.get("/api/workflows").get_json()["workflows"][0]
+        entry = client.get("/api/workflows").get_json()[0]
         assert "id" in entry
         assert entry["name"] == "my.yaml"
 
     def test_list_entry_has_size_and_uploaded_at(self, client):
         _upload_ok(client, "wf.yaml", VALID_YAML)
-        entry = client.get("/api/workflows").get_json()["workflows"][0]
+        entry = client.get("/api/workflows").get_json()[0]
         assert entry["size"] == len(VALID_YAML)
         assert "uploaded_at" in entry
 
@@ -198,13 +198,13 @@ class TestListWorkflows:
         _upload_ok(client, "a.yaml")
         _upload_ok(client, "b.json", VALID_JSON)
         _upload_ok(client, "c.yml")
-        workflows = client.get("/api/workflows").get_json()["workflows"]
+        workflows = client.get("/api/workflows").get_json()
         assert len(workflows) == 3
 
     def test_list_ids_match_upload_ids(self, client):
         id1 = _upload_ok(client, "a.yaml")["id"]
         id2 = _upload_ok(client, "b.yaml")["id"]
-        listed_ids = {w["id"] for w in client.get("/api/workflows").get_json()["workflows"]}
+        listed_ids = {w["id"] for w in client.get("/api/workflows").get_json()}
         assert {id1, id2} == listed_ids
 
 
@@ -266,7 +266,7 @@ class TestDeleteWorkflow:
     def test_deleted_workflow_no_longer_in_list(self, client):
         wf_id = _upload_ok(client)["id"]
         client.delete(f"/api/workflows/{wf_id}")
-        workflows = client.get("/api/workflows").get_json()["workflows"]
+        workflows = client.get("/api/workflows").get_json()
         assert all(w["id"] != wf_id for w in workflows)
 
     def test_deleted_workflow_returns_404_on_retrieve(self, client):
@@ -284,7 +284,7 @@ class TestDeleteWorkflow:
         id1 = _upload_ok(client, "a.yaml")["id"]
         id2 = _upload_ok(client, "b.yaml")["id"]
         client.delete(f"/api/workflows/{id1}")
-        workflows = client.get("/api/workflows").get_json()["workflows"]
+        workflows = client.get("/api/workflows").get_json()
         ids = [w["id"] for w in workflows]
         assert id1 not in ids
         assert id2 in ids
