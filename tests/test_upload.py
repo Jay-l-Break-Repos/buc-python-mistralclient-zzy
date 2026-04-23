@@ -218,25 +218,33 @@ class TestRetrieveWorkflow:
         resp = client.get(f"/api/workflows/{wf_id}")
         assert resp.status_code == 200
 
-    def test_returns_yaml_content(self, client):
+    def test_response_is_json(self, client):
         wf_id = _upload_ok(client, "wf.yaml", VALID_YAML)["id"]
         resp = client.get(f"/api/workflows/{wf_id}")
-        assert resp.data == VALID_YAML
+        assert resp.is_json
 
-    def test_returns_json_content(self, client):
-        wf_id = _upload_ok(client, "wf.json", VALID_JSON)["id"]
-        resp = client.get(f"/api/workflows/{wf_id}")
-        assert resp.data == VALID_JSON
-
-    def test_yaml_content_type_header(self, client):
+    def test_response_has_content_field(self, client):
         wf_id = _upload_ok(client, "wf.yaml", VALID_YAML)["id"]
-        resp = client.get(f"/api/workflows/{wf_id}")
-        assert "yaml" in resp.content_type.lower()
+        body = client.get(f"/api/workflows/{wf_id}").get_json()
+        assert "content" in body
 
-    def test_json_content_type_header(self, client):
+    def test_content_matches_uploaded_yaml(self, client):
+        wf_id = _upload_ok(client, "wf.yaml", VALID_YAML)["id"]
+        body = client.get(f"/api/workflows/{wf_id}").get_json()
+        assert body["content"] == VALID_YAML.decode("utf-8")
+
+    def test_content_matches_uploaded_json(self, client):
         wf_id = _upload_ok(client, "wf.json", VALID_JSON)["id"]
-        resp = client.get(f"/api/workflows/{wf_id}")
-        assert "json" in resp.content_type.lower()
+        body = client.get(f"/api/workflows/{wf_id}").get_json()
+        assert body["content"] == VALID_JSON.decode("utf-8")
+
+    def test_response_includes_metadata_fields(self, client):
+        wf_id = _upload_ok(client, "wf.yaml", VALID_YAML)["id"]
+        body = client.get(f"/api/workflows/{wf_id}").get_json()
+        assert body["id"] == wf_id
+        assert body["name"] == "wf.yaml"
+        assert body["size"] == len(VALID_YAML)
+        assert "uploaded_at" in body
 
     def test_returns_404_for_unknown_id(self, client):
         resp = client.get("/api/workflows/nonexistent-id")

@@ -171,14 +171,19 @@ def list_all_workflows():
 @workflows_bp.route("/<workflow_id>", methods=["GET"])
 def retrieve_workflow(workflow_id: str):
     """
-    Retrieve the raw content of a stored workflow file.
-
-    The response ``Content-Type`` is set to ``application/json`` for
-    ``.json`` files and ``text/yaml`` for YAML files.
+    Retrieve a stored workflow's metadata and file content.
 
     Response 200
     ------------
-    Raw file bytes with appropriate ``Content-Type``.
+    ::
+
+        {
+            "id":          "<uuid4>",
+            "name":        "<filename>",
+            "size":        <bytes>,
+            "uploaded_at": "<ISO-8601 UTC timestamp>",
+            "content":     "<file text as a UTF-8 string>"
+        }
 
     Response 404
     ------------
@@ -190,17 +195,12 @@ def retrieve_workflow(workflow_id: str):
     if record is None:
         return jsonify({"error": f"Workflow '{workflow_id}' not found."}), 404
 
-    content = get_workflow_content(workflow_id)
-    if content is None:
+    raw = get_workflow_content(workflow_id)
+    if raw is None:
         # Metadata exists but file is missing from disk — treat as not found.
         return jsonify({"error": f"Workflow '{workflow_id}' not found."}), 404
 
-    name: str = record["name"]
-    ext = _get_extension(name)
-    content_type = "application/json" if ext == ".json" else "text/yaml"
-
-    from flask import Response
-    return Response(content, status=200, mimetype=content_type)
+    return jsonify({**record, "content": raw.decode("utf-8")}), 200
 
 
 # ---------------------------------------------------------------------------
