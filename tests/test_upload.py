@@ -67,6 +67,20 @@ def _upload_ok(client, filename: str = "wf.yaml", content: bytes = VALID_YAML) -
 
 
 # ===========================================================================
+# GET / — health check
+# ===========================================================================
+
+class TestHealthCheck:
+    def test_root_returns_200(self, client):
+        resp = client.get("/")
+        assert resp.status_code == 200
+
+    def test_root_returns_json_status_ok(self, client):
+        body = client.get("/").get_json()
+        assert body == {"status": "ok"}
+
+
+# ===========================================================================
 # POST /api/workflows/upload
 # ===========================================================================
 

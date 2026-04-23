@@ -10,7 +10,7 @@ Usage
     app.run()
 """
 
-from flask import Flask
+from flask import Flask, jsonify
 
 from app.api.workflows.routes import workflows_bp
 
@@ -45,5 +45,12 @@ def create_app(config: dict | None = None) -> Flask:
     # Register blueprints
     # ------------------------------------------------------------------
     app.register_blueprint(workflows_bp)
+
+    # ------------------------------------------------------------------
+    # Root health-check route
+    # ------------------------------------------------------------------
+    @app.route("/")
+    def health_check():
+        return jsonify({"status": "ok"}), 200
 
     return app
