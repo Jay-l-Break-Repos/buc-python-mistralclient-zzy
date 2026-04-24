@@ -88,6 +88,41 @@ def _public_record(record: dict) -> dict:
     }
 
 
+def _parse_content(file_bytes: bytes, filename: str) -> object:
+    """Parse *file_bytes* as YAML or JSON based on *filename*'s extension.
+
+    Both YAML and JSON are returned as a Python object (dict/list/scalar)
+    so they can be serialised uniformly to JSON in API responses.
+
+    Parameters
+    ----------
+    file_bytes:
+        Raw bytes read from the stored file.
+    filename:
+        Original filename; used to decide the parser (YAML vs JSON).
+
+    Returns
+    -------
+    object
+        Parsed content (dict, list, or scalar).
+
+    Raises
+    ------
+    ValueError
+        If the content cannot be parsed (should not happen for files that
+        passed upload-time validation, but guards against corruption).
+    """
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    try:
+        if ext in ("yaml", "yml"):
+            import yaml  # local import keeps top-level deps minimal
+            return yaml.safe_load(file_bytes)
+        else:  # .json (or unknown — fall back to JSON)
+            return json.loads(file_bytes)
+    except Exception as exc:
+        raise ValueError(f"Could not parse stored workflow file: {exc}") from exc
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -108,6 +143,48 @@ def list_workflows() -> list:
     records = [_public_record(r) for r in index.values()]
     records.sort(key=lambda r: r["uploaded_at"])
     return records
+
+
+def get_workflow(workflow_id: str) -> dict | None:
+    """Retrieve a single workflow's metadata and parsed content by ID.
+
+    Parameters
+    ----------
+    workflow_id:
+        The UUID string assigned at upload time.
+
+    Returns
+    -------
+    dict
+        A record containing ``id``, ``name``, ``size``, ``uploaded_at``,
+        and ``content`` (the parsed YAML/JSON as a JSON-serialisable object).
+    None
+        If no workflow with *workflow_id* exists in the index.
+
+    Raises
+    ------
+    OSError
+        If the stored file cannot be read from disk.
+    ValueError
+        If the stored file content cannot be parsed (indicates corruption).
+    """
+    index = _load_index()
+    record = index.get(workflow_id)
+    if record is None:
+        return None
+
+    stored_path = FILES_DIR / record["stored_name"]
+    file_bytes = stored_path.read_bytes()  # raises OSError if missing
+
+    content = _parse_content(file_bytes, record["name"])
+
+    return {
+        "id":          record["id"],
+        "name":        record["name"],
+        "size":        record["size"],
+        "uploaded_at": record["uploaded_at"],
+        "content":     content,
+    }
 
 
 def save_workflow(filename: str, file_data: bytes) -> dict:
