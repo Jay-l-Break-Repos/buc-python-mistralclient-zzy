@@ -1,0 +1,3 @@
+# This file ensures the uploads/workflows/ directory is tracked by git.
+# Actual uploaded workflow files are stored here at runtime and are
+# excluded from version control via .gitignore.
