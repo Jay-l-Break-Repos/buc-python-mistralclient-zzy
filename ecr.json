@@ -1,0 +1,29 @@
+{
+  "vuln_id": "GHSA-75hx-6r6j-hw56",
+  "ecosystem": "PyPI",
+  "package": "python-mistralclient",
+  "setup_complexity": "platform",
+  "app_port": 9090,
+  "env": {
+    "DEBIAN_FRONTEND": "noninteractive"
+  },
+  "sidecars": [],
+  "url": "http://localhost:9090",
+  "pushed_at": "2026-04-18T01:17:19.066201+00:00",
+  "dockerhub": {
+    "image": "brookeyangr/vulndock:ghsa-75hx-6r6j-hw56",
+    "pull": [
+      "docker pull brookeyangr/vulndock:ghsa-75hx-6r6j-hw56"
+    ],
+    "run": "docker compose -f docker-compose.dockerhub.yml up -d",
+    "compose_file": "docker-compose.dockerhub.yml"
+  },
+  "ecr": {
+    "image": "995133654082.dkr.ecr.us-east-1.amazonaws.com/vuldock/ghsa-1000:ghsa-75hx-6r6j-hw56",
+    "pull": [
+      "docker pull 995133654082.dkr.ecr.us-east-1.amazonaws.com/vuldock/ghsa-1000:ghsa-75hx-6r6j-hw56"
+    ],
+    "run": "docker compose -f docker-compose.ecr.yml up -d",
+    "compose_file": "docker-compose.ecr.yml"
+  }
+}
