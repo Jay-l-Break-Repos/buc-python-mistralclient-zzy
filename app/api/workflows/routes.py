@@ -3,9 +3,10 @@ Workflow API endpoints.
 
 Routes
 ------
-POST /api/workflows/upload      – Upload a YAML or JSON workflow definition file.
-GET  /api/workflows             – List all uploaded workflow definitions.
-GET  /api/workflows/<id>        – Retrieve a specific workflow by ID.
+POST   /api/workflows/upload      – Upload a YAML or JSON workflow definition file.
+GET    /api/workflows             – List all uploaded workflow definitions.
+GET    /api/workflows/<id>        – Retrieve a specific workflow by ID.
+DELETE /api/workflows/<id>        – Delete a specific workflow by ID.
 
 All success and error responses use JSON bodies.
 """
@@ -15,7 +16,7 @@ import json
 import yaml
 from flask import Blueprint, jsonify, request
 
-from app.storage.workflow_store import get_workflow, list_workflows, save_workflow
+from app.storage.workflow_store import delete_workflow, get_workflow, list_workflows, save_workflow
 
 # ---------------------------------------------------------------------------
 # Blueprint
@@ -209,3 +210,45 @@ def get_workflow_endpoint(workflow_id: str):
         return jsonify({"error": f"Workflow '{workflow_id}' not found."}), 404
 
     return jsonify(record), 200
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/workflows/<workflow_id>
+# ---------------------------------------------------------------------------
+
+@workflows_bp.route("/<workflow_id>", methods=["DELETE"])
+def delete_workflow_endpoint(workflow_id: str):
+    """Delete a specific workflow by its ID.
+
+    Removes both the stored file from disk and the entry from the metadata
+    index.
+
+    Path parameters
+    ---------------
+    workflow_id:
+        The UUID string returned when the workflow was uploaded.
+
+    Responses
+    ---------
+    204
+        Workflow deleted successfully (no response body).
+
+    404
+        No workflow with the given ID exists::
+
+            {"error": "Workflow '<id>' not found."}
+
+    500
+        Unexpected I/O error while deleting the stored file::
+
+            {"error": "Failed to delete workflow: <detail>"}
+    """
+    try:
+        found = delete_workflow(workflow_id)
+    except OSError as exc:
+        return jsonify({"error": f"Failed to delete workflow: {exc}"}), 500
+
+    if not found:
+        return jsonify({"error": f"Workflow '{workflow_id}' not found."}), 404
+
+    return "", 204

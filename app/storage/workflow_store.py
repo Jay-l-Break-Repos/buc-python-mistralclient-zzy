@@ -153,6 +153,44 @@ def get_workflow(workflow_id: str) -> dict | None:
     return result
 
 
+def delete_workflow(workflow_id: str) -> bool:
+    """Remove a workflow's file from disk and its entry from the index.
+
+    Parameters
+    ----------
+    workflow_id:
+        The UUID string assigned at upload time.
+
+    Returns
+    -------
+    bool
+        ``True`` if the workflow was found and deleted, ``False`` if no
+        workflow with *workflow_id* exists in the index.
+
+    Raises
+    ------
+    OSError
+        If the stored file cannot be removed from disk.
+    """
+    index = _load_index()
+    record = index.get(workflow_id)
+    if record is None:
+        return False
+
+    # Remove the file from disk (ignore if already missing).
+    file_path = FILES_DIR / record["stored_name"]
+    try:
+        file_path.unlink()
+    except FileNotFoundError:
+        pass  # file already gone – still clean up the index entry
+
+    # Remove the entry from the index and persist.
+    del index[workflow_id]
+    _save_index(index)
+
+    return True
+
+
 def save_workflow(filename: str, file_data: bytes) -> dict:
     """Persist *file_data* to disk under a unique ID and record its metadata.
 
