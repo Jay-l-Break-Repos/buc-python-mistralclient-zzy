@@ -92,6 +92,67 @@ def _public_record(record: dict) -> dict:
 # Public API
 # ---------------------------------------------------------------------------
 
+def list_workflows() -> list[dict]:
+    """Return public metadata records for every stored workflow.
+
+    Returns
+    -------
+    list[dict]
+        A (possibly empty) list of public records sorted by ``uploaded_at``
+        in ascending order (oldest first).  Each record contains
+        ``id``, ``name``, ``size``, and ``uploaded_at``.
+    """
+    index = _load_index()
+    records = [_public_record(r) for r in index.values()]
+    records.sort(key=lambda r: r["uploaded_at"])
+    return records
+
+
+def get_workflow(workflow_id: str) -> dict | None:
+    """Return the full details for a single workflow, or ``None`` if not found.
+
+    Parameters
+    ----------
+    workflow_id:
+        The UUID string assigned at upload time.
+
+    Returns
+    -------
+    dict | None
+        A dict with ``id``, ``name``, ``size``, ``uploaded_at``, and
+        ``content`` (the parsed YAML/JSON payload as a Python object), or
+        ``None`` when *workflow_id* is not in the index.
+
+    Raises
+    ------
+    OSError
+        If the stored file cannot be read from disk.
+    """
+    index = _load_index()
+    record = index.get(workflow_id)
+    if record is None:
+        return None
+
+    file_path = FILES_DIR / record["stored_name"]
+    raw: bytes = file_path.read_bytes()
+
+    # Parse the content so the API can return structured data regardless of
+    # whether the original file was YAML or JSON.
+    name: str = record["name"]
+    dot_pos = name.rfind(".")
+    ext = name[dot_pos:].lower() if dot_pos != -1 else ""
+
+    if ext in {".yaml", ".yml"}:
+        import yaml as _yaml
+        content = _yaml.safe_load(raw)
+    else:
+        content = json.loads(raw)
+
+    result = _public_record(record)
+    result["content"] = content
+    return result
+
+
 def save_workflow(filename: str, file_data: bytes) -> dict:
     """Persist *file_data* to disk under a unique ID and record its metadata.
 

@@ -3,7 +3,9 @@ Workflow API endpoints.
 
 Routes
 ------
-POST /api/workflows/upload  – Upload a YAML or JSON workflow definition file.
+POST /api/workflows/upload      – Upload a YAML or JSON workflow definition file.
+GET  /api/workflows             – List all uploaded workflow definitions.
+GET  /api/workflows/<id>        – Retrieve a specific workflow by ID.
 
 All success and error responses use JSON bodies.
 """
@@ -13,7 +15,7 @@ import json
 import yaml
 from flask import Blueprint, jsonify, request
 
-from app.storage.workflow_store import save_workflow
+from app.storage.workflow_store import get_workflow, list_workflows, save_workflow
 
 # ---------------------------------------------------------------------------
 # Blueprint
@@ -133,3 +135,77 @@ def upload_workflow():
 
     # 5. Return flat record (id, name, size, uploaded_at) --------------------
     return jsonify(record), 201
+
+
+# ---------------------------------------------------------------------------
+# GET /api/workflows
+# ---------------------------------------------------------------------------
+
+@workflows_bp.route("", methods=["GET"])
+def list_workflows_endpoint():
+    """List all uploaded workflow definitions.
+
+    Responses
+    ---------
+    200
+        JSON array of workflow metadata records (may be empty)::
+
+            [
+                {
+                    "id":          "<uuid4>",
+                    "name":        "<original filename>",
+                    "size":        <bytes>,
+                    "uploaded_at": "<ISO-8601 UTC timestamp>"
+                },
+                ...
+            ]
+    """
+    workflows = list_workflows()
+    return jsonify(workflows), 200
+
+
+# ---------------------------------------------------------------------------
+# GET /api/workflows/<workflow_id>
+# ---------------------------------------------------------------------------
+
+@workflows_bp.route("/<workflow_id>", methods=["GET"])
+def get_workflow_endpoint(workflow_id: str):
+    """Retrieve a specific workflow by its ID.
+
+    Path parameters
+    ---------------
+    workflow_id:
+        The UUID string returned when the workflow was uploaded.
+
+    Responses
+    ---------
+    200
+        Workflow metadata plus parsed content::
+
+            {
+                "id":          "<uuid4>",
+                "name":        "<original filename>",
+                "size":        <bytes>,
+                "uploaded_at": "<ISO-8601 UTC timestamp>",
+                "content":     { ... }   ← parsed YAML/JSON as a JSON object
+            }
+
+    404
+        No workflow with the given ID exists::
+
+            {"error": "Workflow '<id>' not found."}
+
+    500
+        Unexpected I/O error while reading the stored file::
+
+            {"error": "Failed to read workflow: <detail>"}
+    """
+    try:
+        record = get_workflow(workflow_id)
+    except OSError as exc:
+        return jsonify({"error": f"Failed to read workflow: {exc}"}), 500
+
+    if record is None:
+        return jsonify({"error": f"Workflow '{workflow_id}' not found."}), 404
+
+    return jsonify(record), 200
