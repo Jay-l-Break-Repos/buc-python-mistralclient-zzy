@@ -187,6 +187,49 @@ def get_workflow(workflow_id: str) -> dict | None:
     }
 
 
+def delete_workflow(workflow_id: str) -> bool:
+    """Delete a workflow's stored file and remove it from the index.
+
+    Both the raw file under ``files/`` and the entry in ``index.json`` are
+    removed.  If the physical file is already missing from disk (e.g. due to
+    manual cleanup) the index entry is still removed and ``True`` is returned
+    — the caller only needs to know whether the ID existed.
+
+    Parameters
+    ----------
+    workflow_id:
+        The UUID string assigned at upload time.
+
+    Returns
+    -------
+    bool
+        ``True``  – the workflow existed and has been deleted.
+        ``False`` – no workflow with *workflow_id* was found in the index.
+
+    Raises
+    ------
+    OSError
+        If the stored file exists but cannot be deleted.
+    """
+    index = _load_index()
+    record = index.get(workflow_id)
+    if record is None:
+        return False
+
+    # Remove the physical file (ignore if already absent).
+    stored_path = FILES_DIR / record["stored_name"]
+    try:
+        stored_path.unlink()
+    except FileNotFoundError:
+        pass  # already gone — still clean up the index entry
+
+    # Remove from index and persist.
+    del index[workflow_id]
+    _save_index(index)
+
+    return True
+
+
 def save_workflow(filename: str, file_data: bytes) -> dict:
     """Persist *file_data* to disk under a unique ID and record its metadata.
 
