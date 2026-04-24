@@ -3,8 +3,9 @@ Workflow API endpoints.
 
 Routes
 ------
-GET  /api/workflows         – List all uploaded workflow definitions.
-POST /api/workflows/upload  – Upload a YAML or JSON workflow definition file.
+GET  /api/workflows           – List all uploaded workflow definitions.
+GET  /api/workflows/<id>      – Retrieve a specific workflow by ID.
+POST /api/workflows/upload    – Upload a YAML or JSON workflow definition file.
 
 All success and error responses use JSON bodies.
 """
@@ -14,7 +15,7 @@ import json
 import yaml
 from flask import Blueprint, jsonify, request
 
-from app.storage.workflow_store import list_workflows, save_workflow
+from app.storage.workflow_store import get_workflow, list_workflows, save_workflow
 
 # ---------------------------------------------------------------------------
 # Blueprint
@@ -84,6 +85,53 @@ def list_workflows_endpoint():
     """
     workflows = list_workflows()
     return jsonify(workflows), 200
+
+
+# ---------------------------------------------------------------------------
+# GET /api/workflows/<workflow_id>
+# ---------------------------------------------------------------------------
+
+@workflows_bp.route("/<workflow_id>", methods=["GET"])
+def get_workflow_endpoint(workflow_id: str):
+    """Retrieve a specific workflow by its ID.
+
+    Path parameters
+    ---------------
+    workflow_id:
+        The UUID string returned when the workflow was uploaded.
+
+    Responses
+    ---------
+    200
+        Workflow metadata plus parsed file content::
+
+            {
+                "id":          "<uuid4>",
+                "name":        "<original filename>",
+                "size":        <bytes>,
+                "uploaded_at": "<ISO-8601 UTC timestamp>",
+                "content":     { ... }
+            }
+
+    404
+        No workflow with the given ID exists::
+
+            {"error": "Workflow '<id>' not found."}
+
+    500
+        Unexpected I/O or parse error while reading the stored file::
+
+            {"error": "Failed to read workflow: <detail>"}
+    """
+    try:
+        record = get_workflow(workflow_id)
+    except (OSError, ValueError) as exc:
+        return jsonify({"error": f"Failed to read workflow: {exc}"}), 500
+
+    if record is None:
+        return jsonify({"error": f"Workflow '{workflow_id}' not found."}), 404
+
+    return jsonify(record), 200
 
 
 # ---------------------------------------------------------------------------
