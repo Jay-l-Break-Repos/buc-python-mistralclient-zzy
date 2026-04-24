@@ -1,0 +1,21 @@
+# Ignore runtime-generated workflow uploads but keep the directory structure
+uploads/workflows/files/
+uploads/workflows/index.json
+uploads/workflows/index.tmp
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Pytest cache
+.pytest_cache/
+
+# Editor files
+.DS_Store
+*.swp
