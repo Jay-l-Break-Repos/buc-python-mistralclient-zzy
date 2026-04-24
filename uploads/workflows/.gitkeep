@@ -1,0 +1,2 @@
+# Keep the uploads/workflows directory in version control
+# Actual workflow files are ignored via .gitignore
