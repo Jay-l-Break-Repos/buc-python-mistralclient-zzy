@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  devstack:
+    build: .
+    container_name: openstack-devstack
+    ports:
+      - "80:80"
+      - "443:443"
+      - "5000:5000"   # Keystone
+      - "8774:8774"   # Nova
+      - "8989:8989"   # Mistral
+    environment:
+      - STACK_PASSWORD=password
+      - DATABASE_PASSWORD=password
+      - RABBIT_PASSWORD=password
+      - SERVICE_PASSWORD=password
+      - ADMIN_PASSWORD=password
+    volumes:
+      - devstack_data:/opt/stack
+    networks:
+      - openstack
+    privileged: true
+
+networks:
+  openstack:
+    driver: bridge
+
+volumes:
+  devstack_data:
