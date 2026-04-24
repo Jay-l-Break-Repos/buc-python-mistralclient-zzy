@@ -92,6 +92,24 @@ def _public_record(record: dict) -> dict:
 # Public API
 # ---------------------------------------------------------------------------
 
+def list_workflows() -> list:
+    """Return a list of all stored workflow metadata records.
+
+    Records are sorted by ``uploaded_at`` in ascending order (oldest first)
+    so the list is deterministic regardless of insertion order in the index.
+
+    Returns
+    -------
+    list[dict]
+        A (possibly empty) list of public metadata records, each containing
+        ``id``, ``name``, ``size``, and ``uploaded_at``.
+    """
+    index = _load_index()
+    records = [_public_record(r) for r in index.values()]
+    records.sort(key=lambda r: r["uploaded_at"])
+    return records
+
+
 def save_workflow(filename: str, file_data: bytes) -> dict:
     """Persist *file_data* to disk under a unique ID and record its metadata.
 

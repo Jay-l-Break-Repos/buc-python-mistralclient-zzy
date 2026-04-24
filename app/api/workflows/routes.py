@@ -3,6 +3,7 @@ Workflow API endpoints.
 
 Routes
 ------
+GET  /api/workflows         – List all uploaded workflow definitions.
 POST /api/workflows/upload  – Upload a YAML or JSON workflow definition file.
 
 All success and error responses use JSON bodies.
@@ -13,7 +14,7 @@ import json
 import yaml
 from flask import Blueprint, jsonify, request
 
-from app.storage.workflow_store import save_workflow
+from app.storage.workflow_store import list_workflows, save_workflow
 
 # ---------------------------------------------------------------------------
 # Blueprint
@@ -56,6 +57,33 @@ def _validate_content(file_bytes: bytes, extension: str) -> str | None:
     except json.JSONDecodeError as exc:
         return f"File content is not valid json: {exc}"
     return None
+
+
+# ---------------------------------------------------------------------------
+# GET /api/workflows
+# ---------------------------------------------------------------------------
+
+@workflows_bp.route("", methods=["GET"])
+def list_workflows_endpoint():
+    """List all uploaded workflow definitions.
+
+    Responses
+    ---------
+    200
+        JSON array of workflow metadata records (may be empty)::
+
+            [
+                {
+                    "id":          "<uuid4>",
+                    "name":        "<original filename>",
+                    "size":        <bytes>,
+                    "uploaded_at": "<ISO-8601 UTC timestamp>"
+                },
+                ...
+            ]
+    """
+    workflows = list_workflows()
+    return jsonify(workflows), 200
 
 
 # ---------------------------------------------------------------------------
